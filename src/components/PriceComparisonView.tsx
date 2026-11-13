@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Download, Printer, TrendingUp } from 'lucide-react';
 import type { PropertyListing } from '../data/properties.ts';
+import { LiveHdbResalePanel } from './LiveHdbResalePanel.tsx';
 
 interface PriceComparisonViewProps {
   listings: PropertyListing[];
@@ -13,6 +14,7 @@ export const PriceComparisonView: React.FC<PriceComparisonViewProps> = ({
   compareIds,
   onSetCompareSlot,
 }) => {
+  const [explorerTab, setExplorerTab] = useState<'live-hdb' | 'compare'>('live-hdb');
   const activeProperties = [0, 1, 2].map((idx) => {
     const id = compareIds[idx];
     return listings.find((l) => l.id === id) || listings[idx] || listings[0];
@@ -109,34 +111,67 @@ export const PriceComparisonView: React.FC<PriceComparisonViewProps> = ({
     <div className="space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-xs font-medium text-emerald-700">Price Explorer & Benchmark Analytics · Simulated Historical Data</p>
+          <p className="text-xs font-medium text-emerald-700">Price Explorer · Live data.gov.sg & Comparison Matrix</p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">
-            Property Price Comparison & Report
+            Price Explorer & HDB Resale Benchmarks
           </h1>
           <p className="mt-1 text-sm text-slate-600">
-            Compare asking prices against indicative district medians, inspect quarterly PSF trends, and download a shareable comparison report.
+            Inspect live HDB resale transactions from data.gov.sg Collection 189 or compare demo units side-by-side.
           </p>
         </div>
 
-        <div className="flex items-center gap-2 no-print">
-          <button
-            type="button"
-            onClick={() => window.print()}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 whitespace-nowrap"
-          >
-            <Printer className="h-3.5 w-3.5" />
-            Print View
-          </button>
-          <button
-            type="button"
-            onClick={handleDownloadHtmlReport}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 px-4 py-2 text-xs font-medium text-white hover:bg-emerald-800 whitespace-nowrap"
-          >
-            <Download className="h-3.5 w-3.5" />
-            Download Report (.HTML)
-          </button>
+        <div className="flex flex-wrap items-center gap-2 no-print">
+          <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1">
+            <button
+              type="button"
+              onClick={() => setExplorerTab('live-hdb')}
+              className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap ${
+                explorerTab === 'live-hdb'
+                  ? 'bg-white text-slate-900 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Live HDB Data (data.gov.sg)
+            </button>
+            <button
+              type="button"
+              onClick={() => setExplorerTab('compare')}
+              className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap ${
+                explorerTab === 'compare'
+                  ? 'bg-white text-slate-900 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Compare Units ({activeProperties.length})
+            </button>
+          </div>
+          {explorerTab === 'compare' && (
+            <>
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 whitespace-nowrap"
+              >
+                <Printer className="h-3.5 w-3.5" />
+                Print View
+              </button>
+              <button
+                type="button"
+                onClick={handleDownloadHtmlReport}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 px-4 py-2 text-xs font-medium text-white hover:bg-emerald-800 whitespace-nowrap"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Download Report (.HTML)
+              </button>
+            </>
+          )}
         </div>
       </div>
+
+      {explorerTab === 'live-hdb' ? (
+        <LiveHdbResalePanel />
+      ) : (
+        <>
 
       {/* Selector Row */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3 no-print">
@@ -328,6 +363,8 @@ export const PriceComparisonView: React.FC<PriceComparisonViewProps> = ({
             Disclaimer: Benchmark curves use simulated historical demo data and do not represent official URA REALIS or HDB Resale Statistics.
           </p>
         </div>
+      )}
+        </>
       )}
     </div>
   );

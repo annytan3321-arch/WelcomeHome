@@ -10,12 +10,16 @@ import {
   Wrench,
   X,
 } from 'lucide-react';
-import type {
-  MaintenanceRequest,
-  PropertyListing,
-  SubscriptionTier,
-  TransactionRecord,
-  ViewingAppointment,
+import {
+  DEMO_PROPERTIES,
+  INITIAL_MAINTENANCE,
+  INITIAL_TRANSACTIONS,
+  INITIAL_VIEWINGS,
+  type MaintenanceRequest,
+  type PropertyListing,
+  type SubscriptionTier,
+  type TransactionRecord,
+  type ViewingAppointment,
 } from './data/properties.ts';
 import { MarketplaceView } from './components/MarketplaceView.tsx';
 import { AiAssistantView } from './components/AiAssistantView.tsx';
@@ -60,26 +64,30 @@ export default function App() {
   const [activeTier, setActiveTier] = useState<SubscriptionTier>('Freemium');
 
   useEffect(() => {
+    async function fetchJsonSafe(url: string) {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) return null;
+        const ct = res.headers.get('content-type') || '';
+        if (!ct.includes('application/json')) return null;
+        return await res.json();
+      } catch {
+        return null;
+      }
+    }
+
     async function loadInitialData() {
       try {
-        const [lRes, vRes, mRes, tRes] = await Promise.all([
-          fetch('/api/listings'),
-          fetch('/api/viewings'),
-          fetch('/api/maintenance'),
-          fetch('/api/transactions'),
-        ]);
         const [lData, vData, mData, tData] = await Promise.all([
-          lRes.json(),
-          vRes.json(),
-          mRes.json(),
-          tRes.json(),
+          fetchJsonSafe('/api/listings'),
+          fetchJsonSafe('/api/viewings'),
+          fetchJsonSafe('/api/maintenance'),
+          fetchJsonSafe('/api/transactions'),
         ]);
-        setListings(lData.listings || []);
-        setViewings(vData.viewings || []);
-        setMaintenance(mData.requests || []);
-        setTransactions(tData.transactions || []);
-      } catch (err) {
-        console.error('Failed loading initial MVP workspace data:', err);
+        setListings(lData?.listings || DEMO_PROPERTIES);
+        setViewings(vData?.viewings || INITIAL_VIEWINGS);
+        setMaintenance(mData?.requests || INITIAL_MAINTENANCE);
+        setTransactions(tData?.transactions || INITIAL_TRANSACTIONS);
       } finally {
         setLoading(false);
       }

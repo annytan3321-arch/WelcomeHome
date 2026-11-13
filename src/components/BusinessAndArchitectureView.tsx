@@ -301,19 +301,19 @@ export const BusinessAndArchitectureView: React.FC<BusinessAndArchitectureViewPr
               <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-3">
                 <p className="font-semibold text-emerald-900">Functional in This MVP</p>
                 <p className="mt-1 text-emerald-800 leading-relaxed">
-                  Multi-filter Singapore marketplace, direct owner listing creation, server-side Gemini AI Assistant & virtual tour notes, 3-way PSF price comparison + HTML/CSV export, SG MSR/TDSR/BSD/ABSD calculator, viewing scheduler, maintenance ticket queue, transaction tracker, and tier switching.
+                  Live Vercel-compatible serverless connection to data.gov.sg Collection 189 (`api/datagsg.ts` &amp; `api/health.ts`) for registered HDB resale flat prices across all historical datasets, multi-filter Singapore marketplace, direct owner listing creation, server-side Gemini AI Assistant &amp; virtual tour notes, 3-way PSF price comparison + HTML/CSV export, SG MSR/TDSR/BSD/ABSD calculator, viewing scheduler, maintenance ticket queue, and transaction tracker.
                 </p>
               </div>
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                 <p className="font-semibold text-slate-900">Simulated Demo Data</p>
                 <p className="mt-1 text-slate-600 leading-relaxed">
-                  Property inventory (D01–D19 samples), quarterly district PSF medians, identity verification labels, vendor rate cards, and in-memory server persistence.
+                  Direct property listing cards (D01–D19 samples), private condo/co-living historical PSF curves, identity verification labels, vendor rate cards, and in-memory server persistence.
                 </p>
               </div>
               <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-3">
                 <p className="font-semibold text-amber-900">Requires External Integration for Production</p>
                 <p className="mt-1 text-amber-800 leading-relaxed">
-                  Singpass MyInfo (NRIC/income verification), URA SPACE & HDB Data.gov.sg resale transaction APIs, LTA DataMall MRT/bus routing, Stripe/PayNow billing, and PostgreSQL + Firebase Auth / OIDC.
+                  Singpass MyInfo (NRIC/income verification), URA SPACE private condo transaction API, Stripe/PayNow billing, and PostgreSQL + Firebase Auth / OIDC.
                 </p>
               </div>
             </div>
@@ -322,16 +322,16 @@ export const BusinessAndArchitectureView: React.FC<BusinessAndArchitectureViewPr
           <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-4">
             <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
               <Shield className="h-4 w-4 text-emerald-700" />
-              Recommended Production Stack, Schema & Compliance
+              Recommended Production Stack, Schema &amp; Compliance
             </h2>
             <div className="space-y-3 text-xs text-slate-700 leading-relaxed">
               <div>
-                <p className="font-semibold text-slate-900">Stack & API Endpoints</p>
+                <p className="font-semibold text-slate-900">Stack &amp; API Endpoints</p>
                 <p className="mt-0.5">
-                  React + TypeScript + Tailwind CSS frontend; Express / Node.js API layer with `@google/genai` (`gemini-4-hydrogen`) server-side proxy; PostgreSQL (Cloud SQL / Drizzle ORM) for relational listings, leases, and audit logs.
+                  React + TypeScript + Tailwind CSS frontend; Vercel-compatible Serverless API routes (`/api/health.ts`, `/api/datagsg.ts`) + Express server with `@google/genai` (`gemini-4-hydrogen`) proxy; PostgreSQL (Cloud SQL / Drizzle ORM) for relational listings, leases, and audit logs.
                 </p>
                 <p className="mt-1 font-mono text-[11px] text-slate-600">
-                  GET/POST /api/listings · GET/POST /api/viewings · GET/POST /api/maintenance · PATCH /api/transactions/:id/steps/:stepId · POST /api/ai/chat
+                  GET /api/health · GET /api/datagsg (data.gov.sg Collection 189) · GET/POST /api/listings · GET/POST /api/viewings · GET/POST /api/maintenance · PATCH /api/transactions/:id/steps/:stepId · POST /api/ai/chat
                 </p>
               </div>
               <div>

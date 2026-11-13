@@ -13,6 +13,8 @@ import {
   type TransactionRecord,
   type ViewingAppointment,
 } from './src/data/properties.ts';
+import healthHandler from './api/health.ts';
+import datagsgHandler from './api/datagsg.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -42,6 +44,16 @@ function getGeminiClient(): GoogleGenAI | null {
     },
   });
 }
+
+// --- Health Check (Vercel-compatible /api/health.ts) ---
+app.get('/api/health', (req, res) => {
+  void healthHandler(req, res);
+});
+
+// --- Live HDB Resale Flat Prices (Vercel-compatible /api/datagsg.ts) ---
+app.get('/api/datagsg', (req, res) => {
+  void datagsgHandler(req, res);
+});
 
 // --- Property Listings API ---
 app.get('/api/listings', (_req, res) => {
@@ -372,14 +384,39 @@ Remind the viewer briefly that AI virtual notes do not replace a physical inspec
   }
 });
 
-async function startServer() {
+function startServer() {
   if (process.env.NODE_ENV !== 'production') {
-    const { createServer: createViteServer } = await import('vite');
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
+    let viteMiddleware: express.RequestHandler | null = null;
+    const viteInitPromise = import('vite')
+      .then(({ createServer }) =>
+        createServer({
+          server: { middlewareMode: true },
+          appType: 'spa',
+        })
+      )
+      .then((vite) => {
+        viteMiddleware = vite.middlewares;
+      })
+      .catch((err) => {
+        console.error('Failed to initialize Vite dev middleware:', err);
+        throw err;
+      });
+
+    app.use((req, res, next) => {
+      if (viteMiddleware) {
+        viteMiddleware(req, res, next);
+        return;
+      }
+      viteInitPromise
+        .then(() => {
+          if (viteMiddleware) {
+            viteMiddleware(req, res, next);
+          } else {
+            next();
+          }
+        })
+        .catch(next);
     });
-    app.use(vite.middlewares);
   } else {
     const distPath = path.resolve(__dirname, 'dist');
     app.use(express.static(distPath));
