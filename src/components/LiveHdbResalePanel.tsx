@@ -1,170 +1,44 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, Database, RefreshCw, Search } from 'lucide-react';
-import type { DataGovDatasetSummary, NormalizedHdbRecord } from '../../api/datagsg.ts';
+import React, { useEffect, useState } from 'react';
+import { ChevronLeft, ChevronRight, Database, GitCompare, RefreshCw, Search } from 'lucide-react';
+import {
+  FLAT_TYPES,
+  HDB_TOWNS,
+  type DatagsgQuery,
+  type LiveDatagsgResponse,
+} from '../utils/datagsgClient.ts';
 
-interface LiveHdbResponse {
-  source: string;
-  metadataEndpoint: string;
-  collection: {
-    collectionId: string;
-    name: string;
-    lastUpdatedAt: string;
-    frequency: string;
-    managedBy: string;
-    childDatasets: string[];
-  };
-  datasets: DataGovDatasetSummary[];
-  activeDataset: DataGovDatasetSummary;
-  pagination: {
-    limit: number;
-    offset: number;
-    total: number;
-    hasPrev: boolean;
-    hasNext: boolean;
-    currentPage: number;
-    totalPages: number;
-  };
-  summary: {
-    count: number;
-    totalMatched: number;
-    medianPrice: number;
-    medianPsf: number;
-    minPrice: number;
-    maxPrice: number;
-    latestMonth: string | null;
-  };
-  cache?: {
-    metadataHit: boolean;
-    recordsHit: boolean;
-  };
-  records: NormalizedHdbRecord[];
+interface LiveHdbResalePanelProps {
+  data: LiveDatagsgResponse | null;
+  query: DatagsgQuery;
+  loading: boolean;
+  error: string | null;
+  healthStatus: { ok: boolean; apiKeyConfigured: boolean } | null;
+  compareIds: string[];
+  onToggleCompare: (id: string) => void;
+  onUpdateQuery: (patch: Partial<DatagsgQuery>) => void;
+  onRetry: () => void;
 }
 
-interface HealthStatusResponse {
-  ok: boolean;
-  status: string;
-  environment?: {
-    dataGovSgApiKeyConfigured: boolean;
-    dataGovSgPublicAccess: boolean;
-  };
-}
-
-const HDB_TOWNS = [
-  'ALL',
-  'ANG MO KIO',
-  'BEDOK',
-  'BISHAN',
-  'BUKIT BATOK',
-  'BUKIT MERAH',
-  'BUKIT PANJANG',
-  'CHOA CHU KANG',
-  'CLEMENTI',
-  'GEYLANG',
-  'HOUGANG',
-  'JURONG EAST',
-  'JURONG WEST',
-  'KALLANG/WHAMPOA',
-  'MARINE PARADE',
-  'PASIR RIS',
-  'PUNGGOL',
-  'QUEENSTOWN',
-  'SEMBAWANG',
-  'SENGKANG',
-  'SERANGOON',
-  'TAMPINES',
-  'TOA PAYOH',
-  'WOODLANDS',
-  'YISHUN',
-];
-
-const FLAT_TYPES = ['ALL', '2 ROOM', '3 ROOM', '4 ROOM', '5 ROOM', 'EXECUTIVE', 'MULTI-GENERATION'];
-
-export const LiveHdbResalePanel: React.FC = () => {
-  const [datasetId, setDatasetId] = useState('');
-  const [town, setTown] = useState('QUEENSTOWN');
-  const [flatType, setFlatType] = useState('4 ROOM');
-  const [searchText, setSearchText] = useState('');
-  const [submittedSearch, setSubmittedSearch] = useState('');
-  const [limit, setLimit] = useState(20);
-  const [offset, setOffset] = useState(0);
-
-  const [data, setData] = useState<LiveHdbResponse | null>(null);
-  const [health, setHealth] = useState<HealthStatusResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+export const LiveHdbResalePanel: React.FC<LiveHdbResalePanelProps> = ({
+  data,
+  query,
+  loading,
+  error,
+  healthStatus,
+  compareIds,
+  onToggleCompare,
+  onUpdateQuery,
+  onRetry,
+}) => {
+  const [searchText, setSearchText] = useState(query.q);
 
   useEffect(() => {
-    fetch('/api/health')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((json: HealthStatusResponse | null) => {
-        if (json) setHealth(json);
-      })
-      .catch(() => {
-        // Non-blocking health check
-      });
-  }, []);
-
-  const fetchLiveHdb = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const params = new URLSearchParams({
-        town,
-        flatType,
-        limit: String(limit),
-        offset: String(offset),
-      });
-      if (datasetId) {
-        params.set('datasetId', datasetId);
-      }
-      if (submittedSearch.trim()) {
-        params.set('q', submittedSearch.trim());
-      }
-
-      const res = await fetch(`/api/datagsg?${params.toString()}`);
-      const json = await res.json();
-      if (!res.ok) {
-        throw new Error(json.error || 'Failed to load live HDB resale data from /api/datagsg.');
-      }
-      setData(json as LiveHdbResponse);
-      if (!datasetId && json.activeDataset?.datasetId) {
-        setDatasetId(json.activeDataset.datasetId);
-      }
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Unable to reach /api/datagsg.');
-    } finally {
-      setLoading(false);
-    }
-  }, [datasetId, town, flatType, submittedSearch, limit, offset]);
-
-  useEffect(() => {
-    fetchLiveHdb();
-  }, [fetchLiveHdb]);
+    setSearchText(query.q);
+  }, [query.q]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setOffset(0);
-    setSubmittedSearch(searchText);
-  };
-
-  const handleTownChange = (nextTown: string) => {
-    setTown(nextTown);
-    setOffset(0);
-  };
-
-  const handleFlatTypeChange = (nextFlatType: string) => {
-    setFlatType(nextFlatType);
-    setOffset(0);
-  };
-
-  const handleDatasetChange = (nextDatasetId: string) => {
-    setDatasetId(nextDatasetId);
-    setOffset(0);
-  };
-
-  const handleLimitChange = (nextLimit: number) => {
-    setLimit(nextLimit);
-    setOffset(0);
+    onUpdateQuery({ q: searchText.trim(), offset: 0 });
   };
 
   const pagination = data?.pagination;
@@ -180,9 +54,9 @@ export const LiveHdbResalePanel: React.FC = () => {
             <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-emerald-700">
               <Database className="h-3.5 w-3.5" />
               <span>Live Government Feed · data.gov.sg Collection 189</span>
-              {health?.ok && (
+              {healthStatus?.ok && (
                 <span className="text-slate-500 font-normal">
-                  · Backend Healthy ({health.environment?.dataGovSgApiKeyConfigured ? 'API Key Active' : 'Public Access'})
+                  · Backend Healthy ({healthStatus.apiKeyConfigured ? 'API Key Active' : 'Public Access'})
                 </span>
               )}
             </div>
@@ -200,7 +74,7 @@ export const LiveHdbResalePanel: React.FC = () => {
 
           <button
             type="button"
-            onClick={fetchLiveHdb}
+            onClick={onRetry}
             disabled={loading}
             className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 whitespace-nowrap self-start shrink-0"
           >
@@ -216,8 +90,8 @@ export const LiveHdbResalePanel: React.FC = () => {
               Collection 189 Dataset Period
             </label>
             <select
-              value={datasetId || data?.activeDataset.datasetId || ''}
-              onChange={(e) => handleDatasetChange(e.target.value)}
+              value={query.datasetId || data?.activeDataset.datasetId || ''}
+              onChange={(e) => onUpdateQuery({ datasetId: e.target.value, offset: 0 })}
               disabled={!data?.datasets?.length}
               className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-800"
             >
@@ -233,8 +107,8 @@ export const LiveHdbResalePanel: React.FC = () => {
           <div className="lg:col-span-2">
             <label className="block text-[11px] font-medium text-slate-500 mb-1">HDB Town</label>
             <select
-              value={town}
-              onChange={(e) => handleTownChange(e.target.value)}
+              value={query.town}
+              onChange={(e) => onUpdateQuery({ town: e.target.value, offset: 0 })}
               className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-800"
             >
               {HDB_TOWNS.map((t) => (
@@ -248,8 +122,8 @@ export const LiveHdbResalePanel: React.FC = () => {
           <div className="lg:col-span-2">
             <label className="block text-[11px] font-medium text-slate-500 mb-1">Flat Type</label>
             <select
-              value={flatType}
-              onChange={(e) => handleFlatTypeChange(e.target.value)}
+              value={query.flatType}
+              onChange={(e) => onUpdateQuery({ flatType: e.target.value, offset: 0 })}
               className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-800"
             >
               {FLAT_TYPES.map((ft) => (
@@ -333,7 +207,7 @@ export const LiveHdbResalePanel: React.FC = () => {
           </div>
           <button
             type="button"
-            onClick={fetchLiveHdb}
+            onClick={onRetry}
             className="rounded-lg bg-red-700 px-3.5 py-2 text-xs font-medium text-white hover:bg-red-800 shrink-0"
           >
             Retry Connection
@@ -342,63 +216,84 @@ export const LiveHdbResalePanel: React.FC = () => {
       ) : (
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[780px] text-left text-xs">
+            <table className="w-full min-w-[840px] text-left text-xs">
               <thead className="border-b border-slate-200 bg-slate-50 text-slate-600">
                 <tr>
                   <th className="px-4 py-3 font-semibold">Month</th>
-                  <th className="px-4 py-3 font-semibold">Town & Address</th>
+                  <th className="px-4 py-3 font-semibold">Town &amp; Address</th>
                   <th className="px-4 py-3 font-semibold">Flat Type / Model</th>
                   <th className="px-4 py-3 font-semibold">Storey</th>
                   <th className="px-4 py-3 font-semibold text-right">Area (sqft)</th>
                   <th className="px-4 py-3 font-semibold">Remaining Lease</th>
                   <th className="px-4 py-3 font-semibold text-right">Resale Price</th>
-                  <th className="px-4 py-3 font-semibold text-right">Est. PSF</th>
+                  <th className="px-4 py-3 font-semibold text-right">PSF</th>
+                  <th className="px-4 py-3 font-semibold text-right">Compare</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
                   [1, 2, 3, 4, 5].map((row) => (
                     <tr key={row} className="animate-pulse">
-                      <td colSpan={8} className="px-4 py-3">
+                      <td colSpan={9} className="px-4 py-3">
                         <div className="h-4 w-full rounded bg-slate-100" />
                       </td>
                     </tr>
                   ))
                 ) : !data || data.records.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-4 py-10 text-center text-slate-500">
-                      No registered resale transactions found for {town} · {flatType}
-                      {submittedSearch ? ` matching "${submittedSearch}"` : ''}.
+                    <td colSpan={9} className="px-4 py-10 text-center text-slate-500">
+                      No registered resale transactions found for {query.town} · {query.flatType}
+                      {query.q ? ` matching "${query.q}"` : ''}.
                     </td>
                   </tr>
                 ) : (
-                  data.records.map((rec) => (
-                    <tr key={rec.id} className="hover:bg-slate-50/70">
-                      <td className="px-4 py-2.5 font-mono text-slate-700 tabular-nums">{rec.month}</td>
-                      <td className="px-4 py-2.5">
-                        <span className="font-medium text-slate-900">
-                          Blk {rec.block} {rec.streetName}
-                        </span>
-                        <span className="block text-[11px] text-slate-500">{rec.town}</span>
-                      </td>
-                      <td className="px-4 py-2.5 text-slate-700">
-                        {rec.flatType} · {rec.flatModel}
-                      </td>
-                      <td className="px-4 py-2.5 font-mono text-slate-600 tabular-nums">
-                        {rec.storeyRange}
-                      </td>
-                      <td className="px-4 py-2.5 text-right font-mono text-slate-700 tabular-nums">
-                        {rec.floorAreaSqft.toLocaleString()}
-                      </td>
-                      <td className="px-4 py-2.5 text-slate-600">{rec.remainingLease}</td>
-                      <td className="px-4 py-2.5 text-right font-mono font-semibold text-slate-900 tabular-nums">
-                        S${rec.resalePrice.toLocaleString()}
-                      </td>
-                      <td className="px-4 py-2.5 text-right font-mono text-emerald-700 tabular-nums">
-                        S${rec.psf.toLocaleString()}
-                      </td>
-                    </tr>
-                  ))
+                  data.records.map((rec) => {
+                    const listingId = `hdb-${rec.id}`;
+                    const isCompared = compareIds.includes(listingId);
+                    return (
+                      <tr key={rec.id} className="hover:bg-slate-50/70">
+                        <td className="px-4 py-2.5 font-mono text-slate-700 tabular-nums">
+                          {rec.month}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <span className="font-medium text-slate-900">
+                            Blk {rec.block} {rec.streetName}
+                          </span>
+                          <span className="block text-[11px] text-slate-500">{rec.town}</span>
+                        </td>
+                        <td className="px-4 py-2.5 text-slate-700">
+                          {rec.flatType} · {rec.flatModel}
+                        </td>
+                        <td className="px-4 py-2.5 font-mono text-slate-600 tabular-nums">
+                          {rec.storeyRange}
+                        </td>
+                        <td className="px-4 py-2.5 text-right font-mono text-slate-700 tabular-nums">
+                          {rec.floorAreaSqft.toLocaleString()}
+                        </td>
+                        <td className="px-4 py-2.5 text-slate-600">{rec.remainingLease}</td>
+                        <td className="px-4 py-2.5 text-right font-mono font-semibold text-slate-900 tabular-nums">
+                          S${rec.resalePrice.toLocaleString()}
+                        </td>
+                        <td className="px-4 py-2.5 text-right font-mono text-emerald-700 tabular-nums">
+                          S${rec.psf.toLocaleString()}
+                        </td>
+                        <td className="px-4 py-2.5 text-right">
+                          <button
+                            type="button"
+                            onClick={() => onToggleCompare(listingId)}
+                            className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors whitespace-nowrap ${
+                              isCompared
+                                ? 'border-emerald-700 bg-emerald-50 text-emerald-800'
+                                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                            }`}
+                          >
+                            <GitCompare className="h-3 w-3" />
+                            {isCompared ? 'Added' : 'Compare'}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -413,13 +308,13 @@ export const LiveHdbResalePanel: React.FC = () => {
                   : '0 records'}
               </span>
               <select
-                value={limit}
-                onChange={(e) => handleLimitChange(Number(e.target.value))}
+                value={query.limit}
+                onChange={(e) => onUpdateQuery({ limit: Number(e.target.value), offset: 0 })}
                 aria-label="Rows per page"
                 className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-mono text-slate-800"
               >
-                <option value={15}>15 / page</option>
-                <option value={20}>20 / page</option>
+                <option value={18}>18 / page</option>
+                <option value={25}>25 / page</option>
                 <option value={50}>50 / page</option>
               </select>
             </div>
@@ -428,7 +323,9 @@ export const LiveHdbResalePanel: React.FC = () => {
               <button
                 type="button"
                 disabled={loading || !pagination?.hasPrev}
-                onClick={() => setOffset((prev) => Math.max(0, prev - limit))}
+                onClick={() =>
+                  onUpdateQuery({ offset: Math.max(0, (pagination?.offset || 0) - query.limit) })
+                }
                 className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-40"
               >
                 <ChevronLeft className="h-3.5 w-3.5" />
@@ -440,7 +337,7 @@ export const LiveHdbResalePanel: React.FC = () => {
               <button
                 type="button"
                 disabled={loading || !pagination?.hasNext}
-                onClick={() => setOffset((prev) => prev + limit)}
+                onClick={() => onUpdateQuery({ offset: (pagination?.offset || 0) + query.limit })}
                 className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-40"
               >
                 Next

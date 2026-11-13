@@ -30,6 +30,15 @@ export interface PropertyListing {
   targetProfiles: TargetProfile[];
   price: number; // S$ total for Buy, S$/mo for Rent or Co-Living
   sqft: number;
+  sqm?: number;
+  psf?: number;
+  town?: string;
+  flatModel?: string;
+  storeyRange?: string;
+  registeredMonth?: string;
+  leaseCommenceDate?: string;
+  remainingLease?: string;
+  sourceType?: 'datagsg' | 'owner';
   bedrooms: number;
   bathrooms: number;
   tenure: string;
@@ -46,7 +55,7 @@ export interface PropertyListing {
   status: 'Active' | 'Under Offer' | 'Pending Review';
   imageKey: ImageKey;
   description: string;
-  isDemoData: true;
+  isDemoData: boolean;
 }
 
 export interface ViewingAppointment {

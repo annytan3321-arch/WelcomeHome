@@ -47,8 +47,10 @@ export const ViewingsTransactionsView: React.FC<ViewingsTransactionsViewProps> =
   useEffect(() => {
     if (preselectedPropertyId) {
       setPropertyId(preselectedPropertyId);
+    } else if (!propertyId && listings[0]?.id) {
+      setPropertyId(listings[0].id);
     }
-  }, [preselectedPropertyId]);
+  }, [preselectedPropertyId, listings, propertyId]);
 
   useEffect(() => {
     if (!activeTxId && transactions[0]?.id) {
@@ -121,11 +123,15 @@ export const ViewingsTransactionsView: React.FC<ViewingsTransactionsViewProps> =
               <select
                 value={propertyId}
                 onChange={(e) => setPropertyId(e.target.value)}
+                disabled={listings.length === 0}
                 className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm"
               >
+                {listings.length === 0 && (
+                  <option value="">Loading live HDB units...</option>
+                )}
                 {listings.map((item) => (
                   <option key={item.id} value={item.id}>
-                    {item.title} ({item.listingMode})
+                    {item.title} · {item.town || item.district}
                   </option>
                 ))}
               </select>
@@ -237,7 +243,7 @@ export const ViewingsTransactionsView: React.FC<ViewingsTransactionsViewProps> =
 
             <button
               type="submit"
-              disabled={submitting}
+              disabled={submitting || !propertyId}
               className="w-full rounded-lg bg-emerald-700 px-4 py-2.5 text-xs font-medium text-white hover:bg-emerald-800 disabled:opacity-60"
             >
               {submitting ? 'Scheduling...' : 'Confirm Viewing Request'}

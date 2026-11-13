@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Bot,
   Building2,
@@ -11,7 +11,6 @@ import {
   X,
 } from 'lucide-react';
 import {
-  DEMO_PROPERTIES,
   INITIAL_MAINTENANCE,
   INITIAL_TRANSACTIONS,
   INITIAL_VIEWINGS,
@@ -21,6 +20,12 @@ import {
   type TransactionRecord,
   type ViewingAppointment,
 } from './data/properties.ts';
+import {
+  fetchDatagsg,
+  mapHdbRecordToListing,
+  type DatagsgQuery,
+  type LiveDatagsgResponse,
+} from './utils/datagsgClient.ts';
 import { MarketplaceView } from './components/MarketplaceView.tsx';
 import { AiAssistantView } from './components/AiAssistantView.tsx';
 import { PriceComparisonView } from './components/PriceComparisonView.tsx';
@@ -52,16 +57,57 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<NavTab>('marketplace');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const [listings, setListings] = useState<PropertyListing[]>([]);
+  const [datagsgQuery, setDatagsgQuery] = useState<DatagsgQuery>({
+    datasetId: '',
+    town: 'ALL',
+    flatType: 'ALL',
+    q: '',
+    limit: 18,
+    offset: 0,
+  });
+  const [datagsgData, setDatagsgData] = useState<LiveDatagsgResponse | null>(null);
+  const [datagsgLoading, setDatagsgLoading] = useState(true);
+  const [datagsgError, setDatagsgError] = useState<string | null>(null);
+  const [healthStatus, setHealthStatus] = useState<{
+    ok: boolean;
+    apiKeyConfigured: boolean;
+  } | null>(null);
+
+  const [customListings, setCustomListings] = useState<PropertyListing[]>([]);
+  const [statusOverrides, setStatusOverrides] = useState<Record<string, PropertyListing['status']>>({});
+
   const [viewings, setViewings] = useState<ViewingAppointment[]>([]);
   const [maintenance, setMaintenance] = useState<MaintenanceRequest[]>([]);
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
-  const [loading, setLoading] = useState(true);
 
-  const [compareIds, setCompareIds] = useState<string[]>(['sg-prop-01', 'sg-prop-02', 'sg-prop-06']);
-  const [aiPropertyId, setAiPropertyId] = useState<string>('sg-prop-01');
-  const [bookingPropertyId, setBookingPropertyId] = useState<string>('sg-prop-01');
+  const [compareIds, setCompareIds] = useState<string[]>([]);
+  const [aiPropertyId, setAiPropertyId] = useState<string>('');
+  const [bookingPropertyId, setBookingPropertyId] = useState<string>('');
   const [activeTier, setActiveTier] = useState<SubscriptionTier>('Freemium');
+
+  const loadDatagsg = useCallback(async (query: DatagsgQuery) => {
+    setDatagsgLoading(true);
+    setDatagsgError(null);
+    try {
+      const response = await fetchDatagsg(query);
+      setDatagsgData(response);
+      if (!query.datasetId && response.activeDataset?.datasetId) {
+        setDatagsgQuery((prev) =>
+          prev.datasetId ? prev : { ...prev, datasetId: response.activeDataset.datasetId }
+        );
+      }
+    } catch (err: unknown) {
+      setDatagsgError(
+        err instanceof Error ? err.message : 'Unable to fetch live HDB records from /api/datagsg.'
+      );
+    } finally {
+      setDatagsgLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadDatagsg(datagsgQuery);
+  }, [datagsgQuery, loadDatagsg]);
 
   useEffect(() => {
     async function fetchJsonSafe(url: string) {
@@ -76,23 +122,54 @@ export default function App() {
       }
     }
 
-    async function loadInitialData() {
-      try {
-        const [lData, vData, mData, tData] = await Promise.all([
-          fetchJsonSafe('/api/listings'),
-          fetchJsonSafe('/api/viewings'),
-          fetchJsonSafe('/api/maintenance'),
-          fetchJsonSafe('/api/transactions'),
-        ]);
-        setListings(lData?.listings || DEMO_PROPERTIES);
-        setViewings(vData?.viewings || INITIAL_VIEWINGS);
-        setMaintenance(mData?.requests || INITIAL_MAINTENANCE);
-        setTransactions(tData?.transactions || INITIAL_TRANSACTIONS);
-      } finally {
-        setLoading(false);
+    async function loadWorkspaceState() {
+      const [hData, vData, mData, tData] = await Promise.all([
+        fetchJsonSafe('/api/health'),
+        fetchJsonSafe('/api/viewings'),
+        fetchJsonSafe('/api/maintenance'),
+        fetchJsonSafe('/api/transactions'),
+      ]);
+
+      if (hData?.ok) {
+        setHealthStatus({
+          ok: true,
+          apiKeyConfigured: Boolean(hData.environment?.dataGovSgApiKeyConfigured),
+        });
       }
+      setViewings(vData?.viewings || INITIAL_VIEWINGS);
+      setMaintenance(mData?.requests || INITIAL_MAINTENANCE);
+      setTransactions(tData?.transactions || INITIAL_TRANSACTIONS);
     }
-    loadInitialData();
+
+    void loadWorkspaceState();
+  }, []);
+
+  const listings = useMemo(() => {
+    const medianPsf = datagsgData?.summary.medianPsf || 0;
+    const liveListings = (datagsgData?.records || []).map((rec) =>
+      mapHdbRecordToListing(rec, medianPsf)
+    );
+    return [...customListings, ...liveListings].map((item) =>
+      statusOverrides[item.id] ? { ...item, status: statusOverrides[item.id] } : item
+    );
+  }, [datagsgData, customListings, statusOverrides]);
+
+  // Seed initial compare / AI / viewing selection strictly from live /api/datagsg records
+  useEffect(() => {
+    if (listings.length === 0) return;
+    setCompareIds((prev) => {
+      const valid = prev.filter((id) => listings.some((l) => l.id === id));
+      if (valid.length > 0) return valid;
+      return listings.slice(0, 3).map((l) => l.id);
+    });
+    setAiPropertyId((prev) => (prev && listings.some((l) => l.id === prev) ? prev : listings[0].id));
+    setBookingPropertyId((prev) =>
+      prev && listings.some((l) => l.id === prev) ? prev : listings[0].id
+    );
+  }, [listings]);
+
+  const handleUpdateDatagsgQuery = useCallback((patch: Partial<DatagsgQuery>) => {
+    setDatagsgQuery((prev) => ({ ...prev, ...patch }));
   }, []);
 
   const handleToggleCompare = (id: string) => {
@@ -116,79 +193,171 @@ export default function App() {
   };
 
   const handleCreateListing = async (payload: Partial<PropertyListing>) => {
-    const res = await fetch('/api/listings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const data = await res.json();
-    if (res.ok && data.listing) {
-      setListings((prev) => [data.listing, ...prev]);
+    const price = Number(payload.price) || 500000;
+    const sqft = Number(payload.sqft) || 900;
+    const psf = Math.round(price / Math.max(sqft, 1));
+    const localId = `owner-${Date.now().toString().slice(-6)}`;
+
+    const created: PropertyListing = {
+      id: localId,
+      title: String(payload.title || 'Owner HDB Listing').trim(),
+      address: String(payload.address || 'Singapore').trim(),
+      district: payload.district || 'QUEENSTOWN · Owner Entry',
+      region: payload.region || 'RCR',
+      propertyType: payload.propertyType || 'HDB',
+      listingMode: payload.listingMode || 'Buy',
+      targetProfiles: ['Families'],
+      price,
+      sqft,
+      sqm: Math.round(sqft / 10.7639),
+      psf,
+      town: payload.district || 'OWNER ENTRY',
+      flatModel: 'Owner Submitted',
+      storeyRange: 'User Specified',
+      registeredMonth: new Date().toISOString().slice(0, 7),
+      leaseCommenceDate: 'N/A',
+      remainingLease: 'User Specified',
+      sourceType: 'owner',
+      bedrooms: Number(payload.bedrooms) || 3,
+      bathrooms: 2,
+      tenure: 'Owner-submitted listing',
+      remainingLeaseYears: 80,
+      nearestMrt: payload.nearestMrt || 'Singapore',
+      mrtWalkMins: 0,
+      nearbySchools: [],
+      nearbyAmenities: [],
+      districtMedianPsf: datagsgData?.summary.medianPsf || psf,
+      estimatedGrossYieldPct: 0,
+      historicalPsfTrend: [],
+      virtualTourRooms: [
+        {
+          id: `owner-room-${localId}`,
+          room: 'Owner Listing Summary',
+          dimensions: `${sqft} sqft`,
+          orientation: payload.district || 'Singapore',
+          highlights: payload.description || 'Owner-submitted unit specification.',
+          aiInsight: 'Added in current browser session.',
+        },
+      ],
+      ownerVerifiedDemo: true,
+      status: 'Active',
+      imageKey: payload.imageKey || 'tiongbahru',
+      description: payload.description || 'Owner-submitted property listing.',
+      isDemoData: false,
+    };
+
+    try {
+      const res = await fetch('/api/listings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
+        const data = await res.json();
+        if (data.listing) {
+          setCustomListings((prev) => [{ ...created, id: data.listing.id }, ...prev]);
+          return;
+        }
+      }
+    } catch {
+      // Fallback to local session state when running on static Vercel deployment
     }
+    setCustomListings((prev) => [created, ...prev]);
   };
 
   const handleUpdateListingStatus = async (id: string, status: PropertyListing['status']) => {
-    const res = await fetch(`/api/listings/${id}/status`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status }),
-    });
-    const data = await res.json();
-    if (res.ok && data.listing) {
-      setListings((prev) => prev.map((item) => (item.id === id ? data.listing : item)));
+    setStatusOverrides((prev) => ({ ...prev, [id]: status }));
+    try {
+      await fetch(`/api/listings/${id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+    } catch {
+      // Non-blocking on static Vercel deployment
     }
   };
 
   const handleCreateViewing = async (
     payload: Omit<ViewingAppointment, 'id' | 'status' | 'propertyTitle'>
   ) => {
-    const res = await fetch('/api/viewings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to schedule viewing.');
-    setViewings((prev) => [data.viewing, ...prev]);
+    const matched = listings.find((l) => l.id === payload.propertyId);
+    const localViewing: ViewingAppointment = {
+      ...payload,
+      id: `vw-${Date.now().toString().slice(-5)}`,
+      propertyTitle: matched?.title || 'Selected HDB Unit',
+      status: 'Scheduled',
+    };
+    try {
+      const res = await fetch('/api/viewings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
+        const data = await res.json();
+        setViewings((prev) => [data.viewing, ...prev]);
+        return;
+      }
+    } catch {
+      // Local fallback on static Vercel deployment
+    }
+    setViewings((prev) => [localViewing, ...prev]);
   };
 
   const handleUpdateViewingStatus = async (id: string, status: ViewingAppointment['status']) => {
-    const res = await fetch(`/api/viewings/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status }),
-    });
-    const data = await res.json();
-    if (res.ok && data.viewing) {
-      setViewings((prev) => prev.map((v) => (v.id === id ? data.viewing : v)));
+    setViewings((prev) => prev.map((v) => (v.id === id ? { ...v, status } : v)));
+    try {
+      await fetch(`/api/viewings/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+    } catch {
+      // Non-blocking
     }
   };
 
   const handleCreateMaintenance = async (
     payload: Omit<MaintenanceRequest, 'id' | 'status' | 'estimatedCostSgd' | 'createdAt'>
   ) => {
-    const res = await fetch('/api/maintenance', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to submit request.');
-    setMaintenance((prev) => [data.request, ...prev]);
+    const localRequest: MaintenanceRequest = {
+      ...payload,
+      id: `mt-${Date.now().toString().slice(-5)}`,
+      estimatedCostSgd: 'Quote pending vendor review',
+      status: 'Submitted',
+      createdAt: new Date().toISOString().slice(0, 10),
+    };
+    try {
+      const res = await fetch('/api/maintenance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
+        const data = await res.json();
+        setMaintenance((prev) => [data.request, ...prev]);
+        return;
+      }
+    } catch {
+      // Local fallback
+    }
+    setMaintenance((prev) => [localRequest, ...prev]);
   };
 
   const handleUpdateMaintenanceStatus = async (
     id: string,
     status: MaintenanceRequest['status']
   ) => {
-    const res = await fetch(`/api/maintenance/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status }),
-    });
-    const data = await res.json();
-    if (res.ok && data.request) {
-      setMaintenance((prev) => prev.map((m) => (m.id === id ? data.request : m)));
+    setMaintenance((prev) => prev.map((m) => (m.id === id ? { ...m, status } : m)));
+    try {
+      await fetch(`/api/maintenance/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+    } catch {
+      // Non-blocking
     }
   };
 
@@ -197,14 +366,24 @@ export default function App() {
     stepId: string,
     status: 'Completed' | 'In Progress' | 'Pending'
   ) => {
-    const res = await fetch(`/api/transactions/${txId}/steps/${stepId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status }),
-    });
-    const data = await res.json();
-    if (res.ok && data.transaction) {
-      setTransactions((prev) => prev.map((t) => (t.id === txId ? data.transaction : t)));
+    setTransactions((prev) =>
+      prev.map((t) =>
+        t.id === txId
+          ? {
+              ...t,
+              steps: t.steps.map((s) => (s.id === stepId ? { ...s, status } : s)),
+            }
+          : t
+      )
+    );
+    try {
+      await fetch(`/api/transactions/${txId}/steps/${stepId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+    } catch {
+      // Non-blocking
     }
   };
 
@@ -252,7 +431,7 @@ export default function App() {
         </nav>
 
         <div className="border-t border-slate-200 p-4 text-xs space-y-1.5">
-          <p className="font-semibold text-slate-900 truncate">Demo Account · Anny Tan</p>
+          <p className="font-semibold text-slate-900 truncate">WelcomeHome SG Workspace</p>
           <p className="text-slate-500">
             Active Tier: <span className="font-medium text-emerald-700">{activeTier}</span>
           </p>
@@ -261,14 +440,14 @@ export default function App() {
             onClick={() => navigateTo('business')}
             className="text-xs font-medium text-slate-700 underline underline-offset-2 hover:text-emerald-700"
           >
-            Manage Plan & Admin
+            Manage Plan &amp; Admin
           </button>
         </div>
       </aside>
 
       {/* Main Content Shell */}
       <div className="flex-1 lg:pl-64 flex flex-col min-w-0">
-        {/* Top Bar (3-zone contract, single-line controls, <= 15% mobile height) */}
+        {/* Top Bar */}
         <header className="sticky top-0 z-30 flex h-14 sm:h-16 items-center justify-between gap-4 border-b border-slate-200 bg-white px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3 min-w-0">
             <button
@@ -351,7 +530,13 @@ export default function App() {
           {activeTab === 'marketplace' && (
             <MarketplaceView
               listings={listings}
+              datagsgData={datagsgData}
+              query={datagsgQuery}
               compareIds={compareIds}
+              isLoading={datagsgLoading}
+              error={datagsgError}
+              onUpdateQuery={handleUpdateDatagsgQuery}
+              onRetry={() => void loadDatagsg(datagsgQuery)}
               onToggleCompare={handleToggleCompare}
               onBookViewing={(prop) => {
                 setBookingPropertyId(prop.id);
@@ -362,7 +547,6 @@ export default function App() {
                 navigateTo('assistant');
               }}
               onCreateListing={handleCreateListing}
-              isLoading={loading}
             />
           )}
 
@@ -373,8 +557,16 @@ export default function App() {
           {activeTab === 'compare' && (
             <PriceComparisonView
               listings={listings}
+              datagsgData={datagsgData}
+              query={datagsgQuery}
+              loading={datagsgLoading}
+              error={datagsgError}
+              healthStatus={healthStatus}
               compareIds={compareIds}
+              onToggleCompare={handleToggleCompare}
               onSetCompareSlot={handleSetCompareSlot}
+              onUpdateQuery={handleUpdateDatagsgQuery}
+              onRetry={() => void loadDatagsg(datagsgQuery)}
             />
           )}
 
@@ -405,6 +597,10 @@ export default function App() {
               activeTier={activeTier}
               onSelectTier={setActiveTier}
               listings={listings}
+              datagsgData={datagsgData}
+              datagsgLoading={datagsgLoading}
+              datagsgError={datagsgError}
+              onRetryDatagsg={() => void loadDatagsg(datagsgQuery)}
               viewings={viewings}
               maintenance={maintenance}
               transactions={transactions}
@@ -417,10 +613,10 @@ export default function App() {
         <footer className="border-t border-slate-200 bg-white px-4 py-4 sm:px-6 lg:px-8 text-xs text-slate-500">
           <div className="max-w-7xl mx-auto flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <p>
-              WelcomeHome SG MVP · Sample Singapore listings & historical benchmarks are simulated demo data.
+              WelcomeHome SG · HDB resale records sourced live from Housing &amp; Development Board via data.gov.sg Collection 189.
             </p>
             <p>
-              AI insights are not official valuations, MAS financial advice, or regulated CEA agency services.
+              Indicative transaction data is not an official valuation, MAS financial advice, or regulated CEA agency service.
             </p>
           </div>
         </footer>

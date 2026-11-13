@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Bot, Send, ShieldAlert, User } from 'lucide-react';
 import type { PropertyListing } from '../data/properties.ts';
 
@@ -28,6 +28,13 @@ export const AiAssistantView: React.FC<AiAssistantViewProps> = ({
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>(
     initialPropertyId || listings[0]?.id || ''
   );
+
+  useEffect(() => {
+    if (initialPropertyId) {
+      setSelectedPropertyId(initialPropertyId);
+    }
+  }, [initialPropertyId]);
+
   const [userRole, setUserRole] = useState<string>('Home Buyer / Tenant');
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -37,7 +44,7 @@ export const AiAssistantView: React.FC<AiAssistantViewProps> = ({
       id: 'welcome-msg',
       role: 'assistant',
       content:
-        'Hello! I am the WelcomeHome SG AI Property Assistant. Attach any demo listing on the left or ask me about Singapore HDB/URA districts, indicative price benchmarks, ABSD/BSD stamp duties, co-living suitability, or transaction checklists.\n\nNote: My responses provide indicative guidance for MVP demonstration and are not official valuations, financial advice, or regulated CEA estate agency advice.',
+        'Hello! I am the WelcomeHome SG AI Property Assistant. Attach any live HDB resale record on the left or ask me about Singapore HDB/URA districts, indicative price benchmarks, ABSD/BSD stamp duties, co-living suitability, or transaction checklists.\n\nNote: My responses provide indicative guidance and are not official valuations, financial advice, or regulated CEA estate agency advice.',
     },
   ]);
 
@@ -105,7 +112,7 @@ export const AiAssistantView: React.FC<AiAssistantViewProps> = ({
           AI Property Assistant
         </h1>
         <p className="mt-1 text-sm text-slate-600">
-          Ask questions about Singapore districts, lease terms, stamp duties, co-living fit, or request an indicative breakdown for a selected demo listing.
+          Ask questions about Singapore districts, lease terms, stamp duties, co-living fit, or request an indicative breakdown for a selected live HDB record.
         </p>
       </div>
 
@@ -129,7 +136,7 @@ export const AiAssistantView: React.FC<AiAssistantViewProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-700">Attach Demo Property Context</label>
+            <label className="block text-xs font-semibold text-slate-700">Attach Live HDB Transaction Context</label>
             <select
               value={selectedPropertyId}
               onChange={(e) => setSelectedPropertyId(e.target.value)}
@@ -138,7 +145,7 @@ export const AiAssistantView: React.FC<AiAssistantViewProps> = ({
               <option value="">General Singapore Market (No Unit Attached)</option>
               {listings.map((item) => (
                 <option key={item.id} value={item.id}>
-                  {item.title} ({item.listingMode})
+                  {item.title} · {item.town || item.district}
                 </option>
               ))}
             </select>
@@ -149,10 +156,11 @@ export const AiAssistantView: React.FC<AiAssistantViewProps> = ({
               <p className="font-semibold text-slate-900">{selectedProp.title}</p>
               <p className="text-slate-600">{selectedProp.district}</p>
               <p className="font-mono text-slate-800 tabular-nums">
-                S${selectedProp.price.toLocaleString()}
-                {selectedProp.listingMode !== 'Buy' ? '/mo' : ''} · {selectedProp.sqft} sqft
+                S${selectedProp.price.toLocaleString()} · {selectedProp.sqft.toLocaleString()} sqft
               </p>
-              <p className="text-slate-500">MRT: {selectedProp.nearestMrt}</p>
+              <p className="text-slate-500">
+                {selectedProp.flatModel || selectedProp.propertyType} · {selectedProp.remainingLease || selectedProp.tenure}
+              </p>
             </div>
           )}
 
