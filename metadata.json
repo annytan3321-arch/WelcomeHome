@@ -1,0 +1,6 @@
+{
+  "name": "WelcomeHome SG",
+  "description": "AI-powered Singapore property platform for transparent search, price comparison, affordability calculations, virtual viewings, and rental management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
